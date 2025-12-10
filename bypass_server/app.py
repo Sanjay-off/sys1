@@ -52,7 +52,7 @@ def handle_redirect():
     
     # Check if token is expired (2 days)
     created_at = token_data["created_at"]
-    if datetime.now(timezone.utc) - created_at > timedelta(days=Config.TOKEN_EXPIRY_DAYS):
+    if datetime.utcnow() - created_at > timedelta(days=Config.TOKEN_EXPIRY_DAYS):
         loop.run_until_complete(TokenOperations.delete_token(token))
         return render_template_string(ERROR_TEMPLATE,
             message="Token expired",
@@ -68,7 +68,7 @@ def handle_redirect():
     
     # Bypass detection checks
     created_at = token_data["created_at"]
-    time_diff = datetime.now(timezone.utc) - created_at
+    time_diff = datetime.utcnow() - created_at
     
     # Check 1: Time difference must be at least 2 minutes
     if time_diff < timedelta(minutes=2):
@@ -389,4 +389,5 @@ if __name__ == '__main__':
         host=Config.SERVER_HOST,
         port=Config.SERVER_PORT,
         debug=True
+
     )
