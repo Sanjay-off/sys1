@@ -267,17 +267,3 @@ async def cmd_system_health(message: Message):
     
     await message.answer(health_text)
 
-# Add these commands to menu
-# def get_admin_commands():
-#     """Updated admin commands list"""
-#     from aiogram.types import BotCommand
-#     return [
-#         # ... existing commands ...
-#         BotCommand(command="stats", description="View system statistics"),
-#         BotCommand(command="user_info", description="Get user information"),
-#         BotCommand(command="resource_info", description="Get resource information"),
-#         BotCommand(command="delete_resource", description="Delete a resource"),
-#         BotCommand(command="clear_old_tokens", description="Clear expired tokens"),
-#         BotCommand(command="backup_db", description="Database backup instructions"),
-#         BotCommand(command="system_health", description="Check system health"),
-#     ]

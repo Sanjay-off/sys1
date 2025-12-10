@@ -1,10 +1,9 @@
 
-
 # ===========================================
 # bypass_server/app.py
 # ===========================================
 from flask import Flask, request, redirect, render_template_string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import asyncio
 import sys
 import os
@@ -53,7 +52,7 @@ def handle_redirect():
     
     # Check if token is expired (2 days)
     created_at = token_data["created_at"]
-    if datetime.utcnow() - created_at > timedelta(days=Config.TOKEN_EXPIRY_DAYS):
+    if datetime.now(timezone.utc) - created_at > timedelta(days=Config.TOKEN_EXPIRY_DAYS):
         loop.run_until_complete(TokenOperations.delete_token(token))
         return render_template_string(ERROR_TEMPLATE,
             message="Token expired",
@@ -61,7 +60,7 @@ def handle_redirect():
         )
     
     # Check if token already used
-    if token_data["status"] in ["verified", "bypassed"]:
+    if token_data["status"] in ["verified"]:
         return render_template_string(ERROR_TEMPLATE,
             message="Token already used",
             bot_link=f"https://t.me/{get_user_bot_username()}?start=newToken"
@@ -69,7 +68,7 @@ def handle_redirect():
     
     # Bypass detection checks
     created_at = token_data["created_at"]
-    time_diff = datetime.utcnow() - created_at
+    time_diff = datetime.now(timezone.utc) - created_at
     
     # Check 1: Time difference must be at least 2 minutes
     if time_diff < timedelta(minutes=2):

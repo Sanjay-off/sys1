@@ -10,6 +10,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from config.settings import Config
 from database.connection import Database
@@ -24,6 +25,7 @@ from user_bot.handlers import help as help_handler
 from user_bot.handlers import resource_delivery
 from user_bot.handlers import verification
 from user_bot.handlers import join_request
+from user_bot.handlers import create_token
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,7 +52,15 @@ async def main():
     dp.include_router(resource_delivery.router)  # Then resource delivery
     dp.include_router(start.router)
     dp.include_router(help_handler.router)
+    dp.include_router(create_token.router)  # Create token command
     dp.include_router(join_request.router)  # Join request handler
+    
+    # Set bot commands
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Start the bot"),
+        BotCommand(command="help", description="Show help message"),
+        BotCommand(command="create_token", description="Generate verification token"),
+    ])
     
     print("🤖 User Bot started!")
     

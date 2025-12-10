@@ -1,3 +1,5 @@
+
+
 # ===========================================
 # admin_bot/handlers/regenerate_post.py
 # ===========================================
@@ -9,6 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.operations import FileOperations
 from utils.helpers import format_template
+from config.settings import Config
 
 router = Router()
 
@@ -41,15 +44,24 @@ async def process_regenerate(message: Message, state: FSMContext, bot: Bot):
             )
             return
         
-        # Generate deeplink
-        bot_info = await bot.get_me()
-        unique_id = file_data["unique_id"]
+        # Generate deeplink using USER BOT username
+        from aiogram import Bot as TempBot
+        from aiogram.client.session.aiohttp import AiohttpSession
         
-        # Check if it's a batch
-        if file_data.get("is_batch", False):
-            deeplink = f"https://t.me/{bot_info.username}?start=batch_{unique_id}"
-        else:
-            deeplink = f"https://t.me/{bot_info.username}?start={unique_id}"
+        session = AiohttpSession()
+        user_bot = TempBot(token=Config.USER_BOT_TOKEN, session=session)
+        try:
+            user_bot_info = await user_bot.get_me()
+            
+            unique_id = file_data["unique_id"]
+            
+            # Check if it's a batch
+            if file_data.get("is_batch", False):
+                deeplink = f"https://t.me/{user_bot_info.username}?start=batch_{unique_id}"
+            else:
+                deeplink = f"https://t.me/{user_bot_info.username}?start={unique_id}"
+        finally:
+            await session.close()
         
         # Format template
         template = format_template(

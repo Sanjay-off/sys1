@@ -1,4 +1,5 @@
 
+
 # ===========================================
 # admin_bot/main.py
 # ===========================================
@@ -23,6 +24,7 @@ from admin_bot.handlers import force_sub
 from admin_bot.handlers import user_management
 from admin_bot.handlers import settings
 from admin_bot.handlers import batch
+from admin_bot.handlers import analytics
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,6 +52,7 @@ async def main():
     dp.include_router(user_management.router)
     dp.include_router(settings.router)
     dp.include_router(batch.router)
+    dp.include_router(analytics.router)  # Added analytics router
     
     # Set bot commands
     await bot.set_my_commands(get_admin_commands())

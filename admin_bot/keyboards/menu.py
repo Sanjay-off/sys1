@@ -26,11 +26,4 @@ def get_admin_commands():
         BotCommand(command="set_user_media_count", description="Set paid media count for user"),
         BotCommand(command="set_verify_link", description="Set how to verify link"),
         BotCommand(command="cancel", description="Cancel current operation"),
-        BotCommand(command="stats", description="View system statistics"),
-        BotCommand(command="user_info", description="Get user information"),
-        BotCommand(command="resource_info", description="Get resource information"),
-        BotCommand(command="delete_resource", description="Delete a resource"),
-        BotCommand(command="clear_old_tokens", description="Clear expired tokens"),
-        BotCommand(command="backup_db", description="Database backup instructions"),
-        BotCommand(command="system_health", description="Check system health"),
     ]

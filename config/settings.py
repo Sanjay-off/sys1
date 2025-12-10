@@ -23,7 +23,7 @@ class Config:
     # Server
     SERVER_HOST = os.getenv("SERVER_HOST", "192.168.1.33")
     SERVER_PORT = int(os.getenv("SERVER_PORT", 5000))
-    SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")
+    SERVER_URL = os.getenv("SERVER_URL", "http://152.42.212.81:5000")
     
     # URL Shorteners
     URL_SHORTENERS = {

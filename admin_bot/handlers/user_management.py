@@ -1,4 +1,5 @@
 
+
 # ===========================================
 # admin_bot/handlers/user_management.py
 # ===========================================
@@ -17,9 +18,6 @@ router = Router()
 class UserManagementStates(StatesGroup):
     waiting_for_ban_user_id = State()
     waiting_for_unban_user_id = State()
-    waiting_for_verify_user_id = State()
-    waiting_for_verify_duration = State()
-    waiting_for_unverify_user_id = State()
     waiting_for_paid_user_id = State()
     waiting_for_paid_count = State()
 
@@ -75,82 +73,12 @@ async def process_unban_user(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Invalid user ID. Please enter a valid number:")
 
-@router.message(Command("set_verified"))
-async def cmd_set_verified(message: Message, state: FSMContext):
-    """Manually verify a user"""
-    await state.set_state(UserManagementStates.waiting_for_verify_user_id)
-    await message.answer(
-        "✅ **Set User Verified**\n\n"
-        "Enter the user ID:\n\n"
-        "Type /cancel to abort."
-    )
-
-@router.message(UserManagementStates.waiting_for_verify_user_id)
-async def process_verify_user_id(message: Message, state: FSMContext):
-    """Process verify user ID"""
-    try:
-        user_id = int(message.text.strip())
-        await state.update_data(user_id=user_id)
-        await state.set_state(UserManagementStates.waiting_for_verify_duration)
-        await message.answer("⏰ Enter duration in hours (e.g., 24 for 1 day):")
-    except ValueError:
-        await message.answer("❌ Invalid user ID. Please enter a valid number:")
-
-@router.message(UserManagementStates.waiting_for_verify_duration)
-async def process_verify_duration(message: Message, state: FSMContext):
-    """Process verify duration"""
-    try:
-        hours = int(message.text.strip())
-        data = await state.get_data()
-        user_id = data["user_id"]
-        
-        verified_until = datetime.utcnow() + timedelta(hours=hours)
-        media_count = await AdminConfigOperations.get_setting("media_access_count")
-        if not media_count:
-            media_count = Config.DEFAULT_MEDIA_ACCESS_COUNT
-        
-        await UserOperations.update_user(user_id, {
-            "verified_until": verified_until,
-            "user_access_count": media_count
-        })
-        
-        await message.answer(
-            f"✅ User {user_id} verified for {hours} hours with {media_count} media access."
-        )
-        await state.clear()
-    except ValueError:
-        await message.answer("❌ Invalid duration. Please enter a valid number:")
-
-@router.message(Command("unset_verified"))
-async def cmd_unset_verified(message: Message, state: FSMContext):
-    """Unverify a user"""
-    await state.set_state(UserManagementStates.waiting_for_unverify_user_id)
-    await message.answer(
-        "❌ **Unverify User**\n\n"
-        "Enter the user ID:\n\n"
-        "Type /cancel to abort."
-    )
-
-@router.message(UserManagementStates.waiting_for_unverify_user_id)
-async def process_unverify_user(message: Message, state: FSMContext):
-    """Process unverify user"""
-    try:
-        user_id = int(message.text.strip())
-        await UserOperations.update_user(user_id, {
-            "user_access_count": 0,
-            "verified_until": None
-        })
-        await message.answer(f"✅ User {user_id} has been unverified.")
-        await state.clear()
-    except ValueError:
-        await message.answer("❌ Invalid user ID. Please enter a valid number:")
-
 @router.message(Command("set_user_media_count"))
 async def cmd_set_user_media_count(message: Message, state: FSMContext):
-    """Set paid media count for specific user"""
+    """ADD media count for specific user (not replace)"""
     await state.set_state(UserManagementStates.waiting_for_paid_user_id)
     await message.answer(
-        "👤 **Set User Media Count**\n\n"
+        "👤 **Add User Media Count**\n\n"
         "Enter the user ID:\n\n"
         "Type /cancel to abort."
     )
@@ -162,21 +90,31 @@ async def process_paid_user_id(message: Message, state: FSMContext):
         user_id = int(message.text.strip())
         await state.update_data(user_id=user_id)
         await state.set_state(UserManagementStates.waiting_for_paid_count)
-        await message.answer("🔢 Enter the media access count:")
+        await message.answer("🔢 Enter the count to ADD (not replace):")
     except ValueError:
         await message.answer("❌ Invalid user ID. Please enter a valid number:")
 
 @router.message(UserManagementStates.waiting_for_paid_count)
 async def process_paid_count(message: Message, state: FSMContext):
-    """Process paid media count"""
+    """Process paid media count - ADD not replace"""
     try:
         count = int(message.text.strip())
         data = await state.get_data()
         user_id = data["user_id"]
         
-        await UserOperations.update_user(user_id, {"user_access_count": count})
+        # Get current count
+        user = await UserOperations.get_user(user_id)
+        current_count = user.get("user_access_count", 0) if user else 0
         
-        await message.answer(f"✅ User {user_id} media access count set to {count}.")
+        # ADD to existing count
+        new_count = current_count + count
+        await UserOperations.update_user(user_id, {"user_access_count": new_count})
+        
+        await message.answer(
+            f"✅ Added {count} to user {user_id}\n"
+            f"Previous: {current_count}\n"
+            f"New Total: {new_count}"
+        )
         await state.clear()
     except ValueError:
         await message.answer("❌ Invalid count. Please enter a valid number:")

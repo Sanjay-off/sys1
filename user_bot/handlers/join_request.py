@@ -1,5 +1,4 @@
 
-#
 
 # ===========================================
 # user_bot/handlers/join_request.py
