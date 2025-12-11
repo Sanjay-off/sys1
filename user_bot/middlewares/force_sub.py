@@ -1,6 +1,6 @@
 
 
-# ===========================================
+# =======# ===========================================
 # user_bot/middlewares/force_sub.py
 # ===========================================
 from typing import Callable, Dict, Any, Awaitable
@@ -103,7 +103,11 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
                     if i + j < len(not_joined):
                         channel = not_joined[i + j]
                         # Create button with channel link
-                        channel_link = f"https://t.me/{channel['channel_username'].replace('@', '')}"
+                        # Remove @ symbol and use proper format
+                        channel_username = channel['channel_username']
+                        if channel_username.startswith('@'):
+                            channel_username = channel_username[1:]  # Remove @
+                        channel_link = f"https://t.me/{channel_username}"
                         row.append(
                             InlineKeyboardButton(
                                 text=channel['placeholder'],

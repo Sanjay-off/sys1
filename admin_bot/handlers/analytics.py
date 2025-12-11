@@ -5,6 +5,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from datetime import datetime, timedelta
+import os
 
 from database.operations import (
     UserOperations, FileOperations, TokenOperations,
@@ -256,14 +257,20 @@ async def cmd_system_health(message: Message):
     
     health_text += f"✅ Force Sub Channels: {healthy_channels}/{len(channels)} accessible\n"
     
-    # Memory/Resource usage
-    import psutil
-    import os
-    process = psutil.Process(os.getpid())
-    memory_mb = process.memory_info().rss / 1024 / 1024
-    health_text += f"\n📊 **Resources:**\n"
-    health_text += f"• Memory Usage: {memory_mb:.2f} MB\n"
-    health_text += f"• CPU Usage: {process.cpu_percent()}%\n"
+    # Memory/Resource usage (with error handling)
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        cpu_percent = process.cpu_percent()
+        health_text += f"\n📊 **Resources:**\n"
+        health_text += f"• Memory Usage: {memory_mb:.2f} MB\n"
+        health_text += f"• CPU Usage: {cpu_percent}%\n"
+    except ImportError:
+        health_text += f"\n📊 **Resources:**\n"
+        health_text += f"• psutil not installed (pip install psutil)\n"
+    except Exception as e:
+        health_text += f"\n📊 **Resources:**\n"
+        health_text += f"• Error: {str(e)}\n"
     
     await message.answer(health_text)
-

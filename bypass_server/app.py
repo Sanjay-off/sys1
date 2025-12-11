@@ -3,10 +3,11 @@
 # bypass_server/app.py
 # ===========================================
 from flask import Flask, request, redirect, render_template_string
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import asyncio
 import sys
 import os
+import threading
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,15 +19,50 @@ from utils.url_shortener import URLShortener
 
 app = Flask(__name__)
 
-# Initialize database connection
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-loop.run_until_complete(Database.connect())
+# Initialize database connection and event loop
+_loop = None
+_thread = None
+
+def init_async_loop():
+    """Initialize async event loop in a separate thread"""
+    global _loop
+    _loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_loop)
+    _loop.run_until_complete(Database.connect())
+    _loop.run_forever()
+
+def get_loop():
+    """Get the event loop"""
+    global _loop, _thread
+    if _loop is None:
+        _thread = threading.Thread(target=init_async_loop, daemon=True)
+        _thread.start()
+        # Wait for loop to be ready
+        import time
+        time.sleep(1)
+    return _loop
+
+def run_async(coro):
+    """Run async function in the event loop"""
+    loop = get_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result(timeout=10)
 
 def get_user_bot_username():
-    """Get user bot username from token"""
-    # Extract bot username from token (first part before ':')
-    return Config.USER_BOT_TOKEN.split(':')[0]
+    """Get user bot username from config"""
+    # Try to extract from token, or use a stored value
+    try:
+        from aiogram import Bot
+        from aiogram.client.session.aiohttp import AiohttpSession
+        
+        session = AiohttpSession()
+        user_bot = Bot(token=Config.USER_BOT_TOKEN, session=session)
+        bot_info = run_async(user_bot.get_me())
+        run_async(session.close())
+        return bot_info.username
+    except:
+        # Fallback - extract from token ID
+        return Config.USER_BOT_TOKEN.split(':')[0]
 
 @app.route('/redirect')
 def handle_redirect():
@@ -34,36 +70,46 @@ def handle_redirect():
     token = request.args.get('token')
     
     if not token:
+        bot_username = get_user_bot_username()
         return render_template_string(ERROR_TEMPLATE, 
             message="Token not provided",
-            bot_link=f"https://t.me/{get_user_bot_username()}?start=newToken"
+            bot_link=f"https://t.me/{bot_username}?start=newToken"
         )
     
-    # Get token from database (run async in sync context)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    token_data = loop.run_until_complete(TokenOperations.get_token(token))
+    # Get token from database
+    try:
+        token_data = run_async(TokenOperations.get_token(token))
+    except Exception as e:
+        print(f"Error getting token: {e}")
+        bot_username = get_user_bot_username()
+        return render_template_string(ERROR_TEMPLATE,
+            message="Error validating token",
+            bot_link=f"https://t.me/{bot_username}?start=newToken"
+        )
     
     if not token_data:
+        bot_username = get_user_bot_username()
         return render_template_string(ERROR_TEMPLATE,
             message="Token invalid, expired, or already used",
-            bot_link=f"https://t.me/{get_user_bot_username()}?start=newToken"
+            bot_link=f"https://t.me/{bot_username}?start=newToken"
         )
     
     # Check if token is expired (2 days)
     created_at = token_data["created_at"]
     if datetime.utcnow() - created_at > timedelta(days=Config.TOKEN_EXPIRY_DAYS):
-        loop.run_until_complete(TokenOperations.delete_token(token))
+        run_async(TokenOperations.delete_token(token))
+        bot_username = get_user_bot_username()
         return render_template_string(ERROR_TEMPLATE,
             message="Token expired",
-            bot_link=f"https://t.me/{get_user_bot_username()}?start=newToken"
+            bot_link=f"https://t.me/{bot_username}?start=newToken"
         )
     
     # Check if token already used
-    if token_data["status"] in ["verified"]:
+    if token_data["status"] in ["verified", "bypassed"]:
+        bot_username = get_user_bot_username()
         return render_template_string(ERROR_TEMPLATE,
             message="Token already used",
-            bot_link=f"https://t.me/{get_user_bot_username()}?start=newToken"
+            bot_link=f"https://t.me/{bot_username}?start=newToken"
         )
     
     # Bypass detection checks
@@ -73,7 +119,7 @@ def handle_redirect():
     # Check 1: Time difference must be at least 2 minutes
     if time_diff < timedelta(minutes=2):
         # Bypass detected: Too fast
-        loop.run_until_complete(TokenOperations.update_token_status(token, "bypassed"))
+        run_async(TokenOperations.update_token_status(token, "bypassed"))
         unique_id = token_data["unique_id"]
         user_id = token_data["created_by"]
         bot_username = get_user_bot_username()
@@ -98,7 +144,7 @@ def handle_redirect():
     
     if not is_whitelisted:
         # Bypass detected: Invalid cross-origin
-        loop.run_until_complete(TokenOperations.update_token_status(token, "bypassed"))
+        run_async(TokenOperations.update_token_status(token, "bypassed"))
         unique_id = token_data["unique_id"]
         user_id = token_data["created_by"]
         bot_username = get_user_bot_username()
@@ -111,13 +157,11 @@ def handle_redirect():
         )
     
     # All checks passed - Mark as verified
-    loop.run_until_complete(TokenOperations.update_token_status(token, "verified"))
+    run_async(TokenOperations.update_token_status(token, "verified"))
     unique_id = token_data["unique_id"]
     user_id = token_data["created_by"]
     bot_username = get_user_bot_username()
     redirect_url = f"https://t.me/{bot_username}?start=verify_{unique_id}_{user_id}"
-    
-    loop.close()
     
     return render_template_string(REDIRECT_TEMPLATE,
         redirect_url=redirect_url,
@@ -389,5 +433,4 @@ if __name__ == '__main__':
         host=Config.SERVER_HOST,
         port=Config.SERVER_PORT,
         debug=True
-
     )
