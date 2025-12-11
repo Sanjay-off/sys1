@@ -19,7 +19,7 @@ async def handle_resource_request(message: Message, bot: Bot):
     """Handle resource delivery via deeplink"""
     user_id = message.from_user.id
     args = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else ""
-    
+    print("args"+args)
     if not args:
         return
     

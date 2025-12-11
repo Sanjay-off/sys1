@@ -1,7 +1,5 @@
-
-
-# =======# ===========================================
-# user_bot/middlewares/force_sub.py
+# ===========================================
+# user_bot/middlewares/force_sub.py - FIXED
 # ===========================================
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware, Bot
@@ -27,8 +25,8 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
             command = event.text.split()[0]
             args = event.text.split(maxsplit=1)[1] if len(event.text.split()) > 1 else ""
             
-            # Skip for these commands
-            if command in ['/start', '/help']:
+            # Skip for these commands without arguments
+            if command in ['/start', '/help', '/create_token']:
                 # If no args, skip middleware
                 if not args:
                     return await handler(event, data)
@@ -36,7 +34,7 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
                 if args.startswith('verify_') or args == 'newToken':
                     return await handler(event, data)
         
-        # Only check for resource requests (deep link with unique_id)
+        # Only check for resource requests (deep link with unique_id or batch_)
         if not (event.text and event.text.startswith('/start ')):
             return await handler(event, data)
         
@@ -84,8 +82,9 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
                 else:
                     not_joined.append(channel)
             
-            except TelegramBadRequest:
+            except TelegramBadRequest as e:
                 # User not in channel or channel not found
+                print(f"TelegramBadRequest for channel {channel_id}: {e}")
                 not_joined.append(channel)
             except Exception as e:
                 print(f"Error checking membership for {channel_id}: {e}")
@@ -103,10 +102,16 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
                     if i + j < len(not_joined):
                         channel = not_joined[i + j]
                         # Create button with channel link
-                        # Remove @ symbol and use proper format
                         channel_username = channel['channel_username']
+                        
+                        # Handle different channel username formats
                         if channel_username.startswith('@'):
                             channel_username = channel_username[1:]  # Remove @
+                        elif channel_username.startswith('-100'):
+                            # It's a channel ID, use as is (private channel)
+                            # User will need to request to join
+                            channel_username = channel_username
+                        
                         channel_link = f"https://t.me/{channel_username}"
                         row.append(
                             InlineKeyboardButton(

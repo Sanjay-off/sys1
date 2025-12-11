@@ -1,7 +1,7 @@
-
 # ===========================================
-# utils/url_shortener.py
+# utils/url_shortener.py - FIXED
 # ===========================================
+import asyncio
 import aiohttp
 import random
 from typing import Optional
@@ -11,6 +11,10 @@ class URLShortener:
     @staticmethod
     async def shorten_url(destination_url: str) -> Optional[str]:
         """Randomly choose a URL shortener and shorten the URL"""
+        if not Config.URL_SHORTENERS:
+            print("⚠️  No URL shorteners configured")
+            return None
+        
         shorteners = list(Config.URL_SHORTENERS.keys())
         chosen = random.choice(shorteners)
         
@@ -21,15 +25,30 @@ class URLShortener:
         try:
             async with aiohttp.ClientSession() as session:
                 url = f"{base_url}?api={api_token}&url={destination_url}"
-                async with session.get(url) as response:
+                
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status == 200:
                         data = await response.json()
                         # Different shorteners have different response formats
                         if chosen == "get2short":
-                            return data.get("shortenedUrl")
+                            shortened = data.get("shortenedUrl")
                         elif chosen == "just2earn":
-                            return data.get("shortenedUrl")
-                    return None
+                            shortened = data.get("shortenedUrl")
+                        else:
+                            shortened = data.get("shortenedUrl") or data.get("shorturl") or data.get("short_url")
+                        
+                        if shortened:
+                            print(f"✅ URL shortened with {chosen}: {shortened}")
+                            return shortened
+                        else:
+                            print(f"⚠️  {chosen} returned no shortened URL: {data}")
+                            return None
+                    else:
+                        print(f"⚠️  {chosen} returned status {response.status}")
+                        return None
+        except asyncio.TimeoutError:
+            print(f"⚠️  {chosen} timeout")
+            return None
         except Exception as e:
             print(f"❌ Error shortening URL with {chosen}: {e}")
             return None
@@ -41,6 +60,7 @@ class URLShortener:
         for config in Config.URL_SHORTENERS.values():
             base_url = config["base_url"]
             # Extract domain from base URL
-            domain = base_url.split("//")[1].split("/")[0]
-            domains.append(domain)
+            if "//" in base_url:
+                domain = base_url.split("//")[1].split("/")[0]
+                domains.append(domain)
         return domains

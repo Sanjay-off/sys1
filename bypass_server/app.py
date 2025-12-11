@@ -105,7 +105,7 @@ def handle_redirect():
         )
     
     # Check if token already used
-    if token_data["status"] in ["verified", "bypassed"]:
+    if token_data["status"] in ["verified"]:
         bot_username = get_user_bot_username()
         return render_template_string(ERROR_TEMPLATE,
             message="Token already used",
@@ -117,7 +117,7 @@ def handle_redirect():
     time_diff = datetime.utcnow() - created_at
     
     # Check 1: Time difference must be at least 2 minutes
-    if time_diff < timedelta(minutes=2):
+    if time_diff < timedelta(minutes=1):
         # Bypass detected: Too fast
         run_async(TokenOperations.update_token_status(token, "bypassed"))
         unique_id = token_data["unique_id"]

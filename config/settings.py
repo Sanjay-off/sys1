@@ -15,27 +15,38 @@ class Config:
     MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
     MONGO_PORT = int(os.getenv("MONGO_PORT", 27017))
     MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "telegram_resource_db")
-    MONGO_URI = f"mongodb://{MONGO_HOST}:{MONGO_PORT}"
+    
+    # Support both authenticated and non-authenticated MongoDB
+    MONGO_USER = os.getenv("MONGO_USER", "")
+    MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "")
+    
+    if MONGO_USER and MONGO_PASSWORD:
+        MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB_NAME}?authSource=admin"
+    else:
+        MONGO_URI = f"mongodb://{MONGO_HOST}:{MONGO_PORT}"
     
     # Channels
     PRIVATE_CHANNEL_ID = int(os.getenv("PRIVATE_CHANNEL_ID"))
     
     # Server
-    SERVER_HOST = os.getenv("SERVER_HOST", "192.168.1.33")
+    SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
     SERVER_PORT = int(os.getenv("SERVER_PORT", 5000))
-    SERVER_URL = os.getenv("SERVER_URL", "http://152.42.212.81:5000")
+    SERVER_URL = os.getenv("SERVER_URL", "http://192.168.0.33:5000")
     
     # URL Shorteners
     URL_SHORTENERS = {
         "get2short": {
-            "api_token": os.getenv("GET2SHORT_API_TOKEN"),
-            "base_url": os.getenv("GET2SHORT_BASE_URL", "https://get2short.com/st")
+            "api_token": os.getenv("GET2SHORT_API_TOKEN", ""),
+            "base_url": os.getenv("GET2SHORT_BASE_URL", "https://get2short.com/api")
         },
         "just2earn": {
-            "api_token": os.getenv("JUST2EARN_API_TOKEN"),
+            "api_token": os.getenv("JUST2EARN_API_TOKEN", ""),
             "base_url": os.getenv("JUST2EARN_BASE_URL", "https://just2earn.com/api")
         }
     }
+    
+    # Filter out shorteners without API tokens
+    URL_SHORTENERS = {k: v for k, v in URL_SHORTENERS.items() if v["api_token"]}
     
     # Message Effects
     FIRE_EFFECT_ID = os.getenv("FIRE_EFFECT_ID", "5104841245755180586")

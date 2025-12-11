@@ -1,8 +1,5 @@
-
-
-
 # ===========================================
-# admin_bot/handlers/broadcast.py - UPDATED WITH AUTO-DELETION
+# admin_bot/handlers/broadcast.py - FIXED
 # ===========================================
 from aiogram import Router, Bot
 from aiogram.filters import Command, StateFilter
@@ -22,9 +19,6 @@ router = Router()
 class BroadcastStates(StatesGroup):
     waiting_for_content = State()
     waiting_for_duration = State()
-
-# Store broadcast message IDs for deletion
-broadcast_messages: dict = {}  # {broadcast_id: {user_id: [message_ids]}}
 
 @router.message(Command("broadcast"))
 async def cmd_broadcast(message: Message, state: FSMContext):
@@ -91,7 +85,6 @@ async def process_broadcast_duration(message: Message, state: FSMContext, bot: B
         )
         
         broadcast_id = await BroadcastOperations.create_broadcast(broadcast_data)
-        broadcast_messages[broadcast_id] = {}
         
         status_msg = await message.answer(
             "📤 Starting broadcast...\n"
@@ -99,8 +92,7 @@ async def process_broadcast_duration(message: Message, state: FSMContext, bot: B
             "Progress: 0/?"
         )
         
-        # IMPORTANT: Get all user IDs from users collection
-        # These are users who have started the USER BOT, not admin bot
+        # Get all user IDs from users collection
         user_ids = await UserOperations.get_all_user_ids()
         total_users = len(user_ids)
         
@@ -111,122 +103,112 @@ async def process_broadcast_duration(message: Message, state: FSMContext, bot: B
         
         sent_count = 0
         failed_count = 0
-        
-        # Create user bot instance to send messages
-        from config.settings import Config
-        from aiogram import Bot as UserBotInstance
-        from aiogram.client.session.aiohttp import AiohttpSession
-        
-        session = AiohttpSession()
-        user_bot = UserBotInstance(token=Config.USER_BOT_TOKEN, session=session)
-        
-        # Broadcast to users (2 per second)
-        for i, user_id in enumerate(user_ids):
-            try:
-                if data["file_type"] == "text":
-                    sent_msg = await user_bot.send_message(
-                        chat_id=user_id,
-                        text=data["text_content"]
-                    )
-                else:
-                    sent_msg = await user_bot.copy_message(
-                        chat_id=user_id,
-                        from_chat_id=Config.PRIVATE_CHANNEL_ID,
-                        message_id=data["channel_message_id"]
-                    )
-                
-                # Store message ID for deletion
-                if broadcast_id not in broadcast_messages:
-                    broadcast_messages[broadcast_id] = {}
-                broadcast_messages[broadcast_id][user_id] = [sent_msg.message_id]
-                
-                sent_count += 1
-            except Exception as e:
-                failed_count += 1
-                print(f"Failed to send to {user_id}: {e}")
-            
-            # Rate limiting
-            if (i + 1) % 2 == 0:
-                await asyncio.sleep(1)
-            
-            # Update status every 10 users
-            if (i + 1) % 10 == 0:
-                try:
-                    await status_msg.edit_text(
-                        f"📤 Broadcasting...\n"
-                        f"Duration: {duration_hours} hours\n"
-                        f"Progress: {i + 1}/{total_users}\n"
-                        f"✅ Sent: {sent_count} | ❌ Failed: {failed_count}"
-                    )
-                except:
-                    pass
-        
-        # Close user bot session
-        await session.close()
-        
-        # Update stats
-        await BroadcastOperations.update_broadcast_stats(
-            broadcast_id, sent_count, failed_count
-        )
-        
-        # Set delete time
-        delete_at = datetime.utcnow() + timedelta(hours=duration_hours)
-        await BroadcastOperations.set_broadcast_delete_time(broadcast_id, delete_at)
-        
-        # Final status
-        await status_msg.edit_text(
-            f"✅ **Broadcast Complete!**\n\n"
-            f"Total Users: {total_users}\n"
-            f"✅ Sent: {sent_count}\n"
-            f"❌ Failed: {failed_count}\n"
-            f"⏰ Will be deleted in {duration_hours} hours"
-        )
-        
-        # Schedule deletion (use user bot for deletion)
-        asyncio.create_task(
-            delete_broadcast_after_delay(
-                Config.USER_BOT_TOKEN, broadcast_id, duration_hours * 60
-            )
-        )
-        
-        await state.clear()
-    
-    except ValueError:
-        await message.answer("❌ Invalid duration. Please enter a valid number:")
-
-async def delete_broadcast_after_delay(user_bot_token: str, broadcast_id: str, delay_minutes: int):
-    """Delete broadcast messages after specified delay"""
-    try:
-        await asyncio.sleep(delay_minutes * 60)
-        
-        if broadcast_id not in broadcast_messages:
-            return
+        broadcast_messages = {}  # {user_id: [message_ids]}
         
         # Create user bot instance
         from aiogram import Bot as UserBotInstance
         from aiogram.client.session.aiohttp import AiohttpSession
         
         session = AiohttpSession()
-        user_bot = UserBotInstance(token=user_bot_token, session=session)
+        user_bot = UserBotInstance(token=Config.USER_BOT_TOKEN, session=session)
+        
+        try:
+            # Broadcast to users (2 per second)
+            for i, user_id in enumerate(user_ids):
+                try:
+                    if data["file_type"] == "text":
+                        sent_msg = await user_bot.send_message(
+                            chat_id=user_id,
+                            text=data["text_content"]
+                        )
+                    else:
+                        sent_msg = await user_bot.copy_message(
+                            chat_id=user_id,
+                            from_chat_id=Config.PRIVATE_CHANNEL_ID,
+                            message_id=data["channel_message_id"]
+                        )
+                    
+                    # Store message ID for deletion
+                    broadcast_messages[user_id] = [sent_msg.message_id]
+                    sent_count += 1
+                    
+                except Exception as e:
+                    failed_count += 1
+                    print(f"Failed to send to {user_id}: {e}")
+                
+                # Rate limiting (2 per second)
+                if (i + 1) % 2 == 0:
+                    await asyncio.sleep(1)
+                
+                # Update status every 10 users
+                if (i + 1) % 10 == 0:
+                    try:
+                        await status_msg.edit_text(
+                            f"📤 Broadcasting...\n"
+                            f"Duration: {duration_hours} hours\n"
+                            f"Progress: {i + 1}/{total_users}\n"
+                            f"✅ Sent: {sent_count} | ❌ Failed: {failed_count}"
+                        )
+                    except:
+                        pass
+            
+            # Update stats
+            await BroadcastOperations.update_broadcast_stats(
+                broadcast_id, sent_count, failed_count
+            )
+            
+            # Set delete time
+            delete_at = datetime.utcnow() + timedelta(hours=duration_hours)
+            await BroadcastOperations.set_broadcast_delete_time(broadcast_id, delete_at)
+            
+            # Final status
+            await status_msg.edit_text(
+                f"✅ **Broadcast Complete!**\n\n"
+                f"Total Users: {total_users}\n"
+                f"✅ Sent: {sent_count}\n"
+                f"❌ Failed: {failed_count}\n"
+                f"⏰ Will be deleted in {duration_hours} hours"
+            )
+            
+            # Schedule deletion
+            asyncio.create_task(
+                delete_broadcast_messages(
+                    user_bot, broadcast_messages, duration_hours * 60
+                )
+            )
+            
+        finally:
+            # Don't close session immediately, keep it for deletion
+            pass
+        
+        await state.clear()
+    
+    except ValueError:
+        await message.answer("❌ Invalid duration. Please enter a valid number:")
+    except Exception as e:
+        await message.answer(f"❌ Error during broadcast: {e}")
+        await state.clear()
+
+async def delete_broadcast_messages(user_bot: Bot, broadcast_messages: dict, delay_minutes: int):
+    """Delete broadcast messages after specified delay"""
+    try:
+        await asyncio.sleep(delay_minutes * 60)
         
         deleted_count = 0
-        total_messages = 0
+        total_messages = sum(len(msgs) for msgs in broadcast_messages.values())
         
-        for user_id, message_ids in broadcast_messages[broadcast_id].items():
-            total_messages += len(message_ids)
+        for user_id, message_ids in broadcast_messages.items():
             for msg_id in message_ids:
                 try:
                     await user_bot.delete_message(chat_id=user_id, message_id=msg_id)
                     deleted_count += 1
                 except Exception as e:
-                    print(f"Failed to delete broadcast message: {e}")
-        
-        await session.close()
+                    print(f"Failed to delete broadcast message for {user_id}: {e}")
         
         print(f"✅ Deleted {deleted_count}/{total_messages} broadcast messages")
         
-        # Clean up
-        del broadcast_messages[broadcast_id]
+        # Close session after deletion
+        await user_bot.session.close()
         
     except Exception as e:
         print(f"Error in broadcast deletion: {e}")
