@@ -1,5 +1,5 @@
 # ===========================================
-# user_bot/middlewares/force_sub.py - FIXED
+# user_bot/middlewares/force_sub.py - COMPLETELY FIXED
 # ===========================================
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware, Bot
@@ -20,30 +20,24 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
         if not isinstance(event, Message):
             return await handler(event, data)
         
-        # Skip for commands without deep link
-        if event.text and event.text.startswith('/'):
-            command = event.text.split()[0]
-            args = event.text.split(maxsplit=1)[1] if len(event.text.split()) > 1 else ""
-            
-            # Skip for these commands without arguments
-            if command in ['/start', '/help', '/create_token']:
-                # If no args, skip middleware
-                if not args:
-                    return await handler(event, data)
-                # If args are verify_ or newToken, skip
-                if args.startswith('verify_') or args == 'newToken':
-                    return await handler(event, data)
-        
-        # Only check for resource requests (deep link with unique_id or batch_)
-        if not (event.text and event.text.startswith('/start ')):
+        # Skip for non-/start commands
+        if not (event.text and event.text.startswith('/start')):
             return await handler(event, data)
         
-        args = event.text.split(maxsplit=1)[1] if len(event.text.split()) > 1 else ""
+        # Extract command and args
+        parts = event.text.split(maxsplit=1)
+        command = parts[0]
+        args = parts[1] if len(parts) > 1 else ""
         
-        # Skip for verification payloads
-        if not args or args.startswith('verify_') or args == 'newToken':
+        # Skip for /start without arguments
+        if not args:
             return await handler(event, data)
         
+        # Skip for verification payloads (verify_ and newToken)
+        if args.startswith('verify_') or args == 'newToken':
+            return await handler(event, data)
+        
+        # This is a resource request - check force sub
         user_id = event.from_user.id
         bot: Bot = data.get('bot')
         
@@ -53,6 +47,8 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
         if not force_sub_channels:
             # No force sub configured, proceed
             return await handler(event, data)
+        
+        print(f"🔍 Force sub check for user {user_id}, channels: {len(force_sub_channels)}")
         
         # Get user data
         user = await UserOperations.get_user(user_id)
@@ -79,19 +75,23 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
                 if member.status in ['member', 'administrator', 'creator']:
                     # Add to join_requests to skip future checks
                     await UserOperations.add_join_request(user_id, channel_id)
+                    print(f"✅ User {user_id} is member of channel {channel_id}")
                 else:
                     not_joined.append(channel)
+                    print(f"❌ User {user_id} NOT member of channel {channel_id}, status: {member.status}")
             
             except TelegramBadRequest as e:
                 # User not in channel or channel not found
-                print(f"TelegramBadRequest for channel {channel_id}: {e}")
+                print(f"⚠️ TelegramBadRequest for channel {channel_id}: {e}")
                 not_joined.append(channel)
             except Exception as e:
-                print(f"Error checking membership for {channel_id}: {e}")
+                print(f"⚠️ Error checking membership for {channel_id}: {e}")
                 not_joined.append(channel)
         
         # If user hasn't joined all channels, show force sub message
         if not_joined:
+            print(f"❌ User {user_id} must join {len(not_joined)} channels")
+            
             username = event.from_user.first_name or event.from_user.username or "User"
             
             # Create inline keyboard with channels (2 per row)
@@ -108,8 +108,8 @@ class ForceSubscriptionMiddleware(BaseMiddleware):
                         if channel_username.startswith('@'):
                             channel_username = channel_username[1:]  # Remove @
                         elif channel_username.startswith('-100'):
-                            # It's a channel ID, use as is (private channel)
-                            # User will need to request to join
+                            # It's a channel ID - try to get invite link
+                            # For now, just use the ID as-is
                             channel_username = channel_username
                         
                         channel_link = f"https://t.me/{channel_username}"
@@ -144,4 +144,5 @@ sᴜʙsᴄʀɪʙᴇ ɴᴏᴡ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ғɪʟᴇs."""
             return  # Stop processing
         
         # User joined all channels, proceed
+        print(f"✅ User {user_id} has joined all force sub channels")
         return await handler(event, data)
